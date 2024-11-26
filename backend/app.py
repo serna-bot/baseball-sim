@@ -6,6 +6,8 @@ import struct
 from threading import Thread
 import numpy as np
 import time
+from scipy.integrate import solve_ivp
+from velocity import VelocityBattingEstimator
 
 app = Flask(__name__)
 
@@ -20,6 +22,9 @@ app.logger.setLevel(logging.INFO)
 SERVICE_UUID = "917649A0-E98E-11E5-9EEC-0102A5D5C51B"  # UUID for the IMU service
 CHAR_UUID = "917649A0-E98E-11E5-9EEC-0102A5D5C51B"    # UUID for the IMU characteristic
 
+estimator = None
+initialize_flag = False
+stop_flag = False
 delta_t = 0.00962 #s sampling rate of IMU
 latest_imu_data = []
 game_stats = {}
@@ -46,80 +51,30 @@ async def connect_and_read():
 
         # Connect to the device
         async with BleakClient(device_address) as client:
+            global stop_flag
             if client.is_connected:
                 app.logger.info("Connected to Arduino")
 
                 def notification_handler(sender, data):
-                    global delta_t
+                    global delta_t, initialize_flag
                     imu_values = struct.unpack("f" * 6, data)  # Assuming 6 floats
-                    imu_data = {
-                        "accelX": imu_values[0],
-                        "accelY": imu_values[1],
-                        "accelZ": imu_values[2],
-                        "gyroX": imu_values[3],
-                        "gyroY": imu_values[4],
-                        "gyroZ": imu_values[5],
-                    }
-                    position = get_trajectory_position(imu_data, delta_t)
-                    app.logger.info(f"Current position of bat: {position}")
-                    # latest_imu_data.append(imu_data)
-                    # app.logger.info(f"Received IMU Data: {imu_data}")
+                    ax, ay, az, gx, gy, gz = imu_values[0], imu_values[1], imu_values[2], imu_values[3], imu_values[4], imu_values[5]
+                    if (not initialize_flag):
+                        estimator.initialize_euler_parameters_cosine_matrix(ax, ay, az)
+                        initialize_flag = True
+                    else:
+                        velocity = estimator.update_velocity(ax, ay, az, gx, gy, gz, delta_t)
+                        app.logger.info(f"Current velocity: {velocity}")
+                    
 
                 await client.start_notify(CHAR_UUID, notification_handler)
 
                 # Keep the connection alive
-                while client.is_connected:
+                while client.is_connected and not stop_flag:
                     await asyncio.sleep(1)
 
     except Exception as e:
         app.logger.error(f"Error in BLE connection: {e}")
-
-# Define rotation matrices for yaw, pitch, and roll
-def yaw_matrix(psi):
-    return np.array([[np.cos(psi), np.sin(psi), 0],
-                     [-np.sin(psi), np.cos(psi), 0],
-                     [0, 0, 1]])
-
-def pitch_matrix(theta):
-    return np.array([[np.cos(theta), 0, -np.sin(theta)],
-                     [0, 1, 0],
-                     [np.sin(theta), 0, np.cos(theta)]])
-
-def roll_matrix(phi):
-    return np.array([[1, 0, 0],
-                     [0, np.cos(phi), np.sin(phi)],
-                     [0, -np.sin(phi), np.cos(phi)]])
-
-# Function to calculate the Euler angle transformation matrix
-def euler_rotation_matrix(psi, theta, phi):
-    return np.dot(np.dot(yaw_matrix(psi), pitch_matrix(theta)), roll_matrix(phi))
-
-# Function to apply IMU readings to a trajectory position
-def get_trajectory_position(imu_data, delta_t):
-    position = np.array([0.0, 0.0, 0.0], dtype=np.float64)  # Ensure position is float64
-    velocity = np.array([0.0, 0.0, 0.0], dtype=np.float64)  # Ensure velocity is float64
-    acceleration = np.array([0.0, 0.0, -9.81], dtype=np.float64)  # Gravity, float64
-    
-    
-    # Extract gyroscope and accelerometer data from the IMU reading
-    ax, ay, az = imu_data['accelX'], imu_data['accelY'], imu_data['accelZ']
-    gx, gy, gz = imu_data['gyroX'], imu_data['gyroY'], imu_data['gyroZ']
-    
-    # Calculate the Euler angles from the gyroscope data (angular velocity integration)
-    psi = gx * delta_t  # yaw
-    theta = gy * delta_t  # pitch
-    phi = gz * delta_t  # roll
-    
-    # Apply the Euler rotation matrix to the accelerometer data
-    rotation_matrix = euler_rotation_matrix(psi, theta, phi)
-    rotated_accel = np.dot(rotation_matrix, np.array([ax, ay, az], dtype=np.float64))
-    
-    # Update velocity and position using the rotated accelerometer data
-    velocity += rotated_accel * delta_t
-    position += velocity * delta_t
-    
-    return position
-
 
 def generate_pitch():
     global game_stats
@@ -146,7 +101,11 @@ def get_imu_data():
 
 @app.route("/start-pitch", methods=["POST"])
 def start_ble():
-    global ble_task
+    global ble_task, stop_flag, initialize_flag, estimator
+
+    stop_flag = False
+    initialize_flag = False
+    estimator = VelocityBattingEstimator()
 
     if ble_task and not ble_task.done():
         return jsonify({"message": "BLE connection is already active"}), 400
