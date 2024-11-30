@@ -79,7 +79,10 @@ class VelocityBattingEstimator:
 
         # Transform accelerometer readings from world frame to body-fixed frame
         accel_world = np.array([ax, ay, az])
-        accel_body = np.dot(C.T, accel_world) - np.array([0, 0, self.g])  # A_a(t) = C^T * a(t) - g
+        accel_body = np.dot(C.T, accel_world)  # A_a(t) = C^T * a(t)
+        print(f"Accel World: {accel_world}")
+        # Debugging: print the body accelerations after gravity subtraction
+        print(f"Accel Body: {accel_body}")
 
         return accel_body
 

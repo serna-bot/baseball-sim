@@ -1,39 +1,137 @@
 import numpy as np
+from scipy.integrate import solve_ivp
 
-def calculate_pitch_data():
+def magnus_force(velocity, omega, rho=1.225, radius=0.037):
+    """
+    Compute the Magnus force vector.
+    velocity: velocity vector [vx, vy, vz] in m/s
+    omega: spin vector [wx, wy, wz] in rad/s
+    rho: air density in kg/m^3
+    radius: radius of the baseball in m
+    """
+    velocity_norm = np.linalg.norm(velocity)
+    if velocity_norm == 0:
+        return np.array([0.0, 0.0, 0.0])  # Avoid division by zero
+    
+    # Cross product to find Magnus force direction
+    lift_direction = np.cross(omega, velocity / velocity_norm)
+    
+    # Magnitude of Magnus force
+    magnus_magnitude = 0.5 * rho * np.pi * radius**3 * velocity_norm * np.linalg.norm(omega)
+    
+    # Resultant force vector
+    return magnus_magnitude * lift_direction
+
+def drag_force(velocity, rho=1.225, radius=0.037, Cd=0.47):
+    """
+    Compute the drag force vector.
+    velocity: velocity vector [vx, vy, vz] in m/s
+    rho: air density in kg/m^3
+    radius: radius of the baseball in m
+    Cd: drag coefficient
+    """
+    velocity_norm = np.linalg.norm(velocity)
+    if velocity_norm == 0:
+        return np.array([0.0, 0.0, 0.0])  # Avoid division by zero
+    
+    area = np.pi * radius**2  # Cross-sectional area of the ball
+    drag_magnitude = 0.5 * rho * Cd * area * velocity_norm**2
+    
+    # Direction of drag is opposite to velocity
+    return -drag_magnitude * (velocity / velocity_norm)
+
+def baseball_dynamics(t, state, mass, omega, rho, radius):
+    """
+    Compute the state derivatives for the baseball.
+    t: time in seconds
+    state: [x, y, z, vx, vy, vz]
+    mass: mass of the baseball in kg
+    omega: spin vector [wx, wy, wz] in rad/s
+    rho: air density in kg/m^3
+    radius: radius of the baseball in m
+    """
+    x, y, z, vx, vy, vz = state
+    velocity = np.array([vx, vy, vz])
+    
+    # Forces
+    F_magnus = magnus_force(velocity, omega, rho, radius)
+    F_drag = drag_force(velocity, rho, radius)
+    F_gravity = np.array([0.0, 0.0, -mass * 9.81])  # Gravity
+    
+    # Total force
+    F_total = F_magnus + F_drag + F_gravity
+    
+    # Acceleration
+    acceleration = F_total / mass
+    
+    # Derivatives
+    dxdt = vx
+    dydt = vy
+    dzdt = vz
+    dvxdt, dvydt, dvzdt = acceleration
+    
+    return [dxdt, dydt, dzdt, dvxdt, dvydt, dvzdt]
+
+def simulate_pitch(V0, omega_rpm, launch_angle_deg, side_angle_deg, time_max=2.0, dt=0.01):
+    """
+    Simulate the baseball pitch in 3D.
+    V0: initial velocity in m/s
+    omega_rpm: spin rate vector [wx, wy, wz] in rpm
+    launch_angle_deg: vertical launch angle in degrees
+    side_angle_deg: horizontal angle in degrees
+    time_max: maximum simulation time in seconds
+    dt: time step in seconds
+    """
     # Constants
+    mass = 0.145  # Baseball mass in kg
+    radius = 0.037  # Baseball radius in m
     rho = 1.225  # Air density in kg/m^3
-    G_rpm = 2000  # Spin rate in rpm
-    G_rad = G_rpm * 2 * np.pi / 60  # Convert to rad/s
-    b = 0.037  # Radius of the baseball in m
-    mass_kg = 0.145  # Mass of the baseball in kg
-    V0 = 40.2336  # Initial velocity in m/s
-    distance_m = 18.44  # Distance to home plate in meters
+    
+    # Convert angles and spin to radians and rad/s
+    launch_angle_rad = np.radians(launch_angle_deg)
+    side_angle_rad = np.radians(side_angle_deg)
+    omega = np.array(omega_rpm) * 2 * np.pi / 60  # Convert to rad/s
+    
+    # Initial state
+    V0x = V0 * np.cos(launch_angle_rad) * np.cos(side_angle_rad)
+    V0y = V0 * np.cos(launch_angle_rad) * np.sin(side_angle_rad)
+    V0z = V0 * np.sin(launch_angle_rad)
+    state_0 = [0.0, 0.0, 1.0, V0x, V0y, V0z]  # Initial position and velocity
+    
+    # Time vector
+    t_span = (0, time_max)
+    t_eval = np.arange(0, time_max, dt)
+    
+    # Solve ODEs
+    solution = solve_ivp(
+        baseball_dynamics, 
+        t_span, 
+        state_0, 
+        t_eval=t_eval, 
+        args=(mass, omega, rho, radius),
+        method='RK45'
+    )
+    
+    # Extract results
+    x, y, z, vx, vy, vz = solution.y
+    time = solution.t
+    
+    return time.tolist(), x.tolist(), y.tolist(), z.tolist(), vx.tolist(), vy.tolist(), vz.tolist()
 
-    # Magnus force
-    F = (rho * G_rad * V0 * b * np.pi) / 2  # Force in N
-    a_magnus = F / mass_kg  # Acceleration due to Magnus force
+# Example usage
+time, x, y, z, vx, vy, vz = simulate_pitch(
+    V0=40,  # Initial velocity in m/s
+    omega_rpm=[0, 2000, 0],  # Spin rate vector (side spin)
+    launch_angle_deg=10,  # Vertical launch angle
+    side_angle_deg=0,  # Horizontal angle
+    time_max=2.0,
+    dt=0.01
+)
 
-    # Radius of curvature
-    R = V0**2 / a_magnus  # Radius of the curved path
-
-    # Time to reach home plate
-    time = distance_m / V0  # Simplified time assuming constant velocity
-
-    # Deflection at home plate
-    Yd = R - np.sqrt(R**2 - (distance_m**2 / 4))  # Deflection assuming circular arc
-
-    # Velocity reduction due to drag
-    Cd = 0.47  # Drag coefficient
-    area_ball = np.pi * b**2  # Cross-sectional area
-    drag_force = 0.5 * Cd * rho * area_ball * V0**2
-    a_drag = drag_force / mass_kg
-    Vf = V0 - a_drag * time  # Final velocity after drag deceleration
-
-    # Results
-    print(f"Magnus Force (F): {F:.3f} N")
-    print(f"Magnus Acceleration (a): {a_magnus:.3f} m/s^2")
-    print(f"Radius of Curvature (R): {R:.3f} m")
-    print(f"Time to Home Plate: {time:.3f} s")
-    print(f"Deflection (Yd): {Yd:.3f} m")
-    print(f"Final Velocity at Home Plate (Vf): {Vf:.3f} m/s")
+# Final velocity vector
+# final_velocity = [vx[-1], vy[-1], vz[-1]]
+# final_time = time[-1]
+# final_position = [x[-1], y[-1], z[-1]]
+# print(f"Final velocity: {final_velocity} m/s")
+# print(f"Time to plate: {final_time} seconds")
+# print(f"Final position: {final_position}")
