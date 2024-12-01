@@ -119,14 +119,14 @@ def simulate_pitch(V0, omega_rpm, launch_angle_deg, side_angle_deg, time_max=2.0
     return time.tolist(), x.tolist(), y.tolist(), z.tolist(), vx.tolist(), vy.tolist(), vz.tolist()
 
 # Example usage
-time, x, y, z, vx, vy, vz = simulate_pitch(
-    V0=40,  # Initial velocity in m/s
-    omega_rpm=[0, 2000, 0],  # Spin rate vector (side spin)
-    launch_angle_deg=10,  # Vertical launch angle
-    side_angle_deg=0,  # Horizontal angle
-    time_max=2.0,
-    dt=0.01
-)
+# time, x, y, z, vx, vy, vz = simulate_pitch(
+#     V0=40,  # Initial velocity in m/s
+#     omega_rpm=[0, 2000, 0],  # Spin rate vector (side spin)
+#     launch_angle_deg=10,  # Vertical launch angle
+#     side_angle_deg=0,  # Horizontal angle
+#     time_max=2.0,
+#     dt=0.01
+# )
 
 # Final velocity vector
 # final_velocity = [vx[-1], vy[-1], vz[-1]]

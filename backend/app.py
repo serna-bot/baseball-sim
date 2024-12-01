@@ -7,6 +7,7 @@ from threading import Thread
 from velocity import VelocityBattingEstimator
 from pitch import simulate_pitch
 from hit import calculate_exit_velocity, calculate_launch_angle
+from pitch_model import predict_pitch
 
 app = Flask(__name__)
 
@@ -26,9 +27,10 @@ initialize_flag = True
 time_to_plate = 0 #s
 v_bat = None
 v_ball = None
+pitch_type = None
 delta_t = 0.00962 #s sampling rate of IMU
 latest_imu_data = []
-game_stats = {}
+game_stats = []
 ble_task = None  # Track BLE task to prevent multiple connections
 game_task = None
 calculation_task = None
@@ -82,7 +84,7 @@ async def connect_and_read():
                         initialize_flag = False
                     else:
                         v_bat = estimator.update_velocity(ax, ay, az, gx, gy, gz, delta_t)
-                        app.logger.info(f"Current velocity: {v_bat}")
+                        # app.logger.info(f"Current velocity: {v_bat}")
                         
                 await client.start_notify(CHAR_UUID, notification_handler)
                 yield f"Reading\n\n"
@@ -95,8 +97,9 @@ async def connect_and_read():
                             app.logger.info(f"vbat: {v_bat} vball: {v_ball}")
                             v_exit = calculate_exit_velocity(v_ball, v_bat)
                             theta_launch = calculate_launch_angle(v_exit)
-                            # game_stats.append()
-                            yield f"Results: {{'v_bat':{v_bat}, 'v_exit':{v_exit}, 'theta_launch':{theta_launch}}}\n\n"
+                            app.logger.info(f"vball: {v_ball} \nvbat: {v_bat} vexit: {v_exit} theta_launch: {theta_launch[1]}")
+                            game_stats.append({"exit_velocity": v_exit, "launch_angle": theta_launch[1], "bat_velocity": v_bat})
+                            yield f"Results: {{'v_bat':{v_bat}, 'v_exit':{v_exit}, 'theta_launch':{theta_launch[1]}}}\n\n"
                             break
                     await asyncio.sleep(1)
 
@@ -105,16 +108,32 @@ async def connect_and_read():
 
 @app.route("/get-pitch", methods=["GET"])
 def generate_pitch():
-    global game_stats, time_to_plate, v_ball
+    global game_stats, time_to_plate, v_ball, pitch_type
     #spin and velocity
-    time, x, y, z, vx, vy, vz = simulate_pitch(
-        V0=40,  # Initial velocity in m/s
-        omega_rpm=[0, 2000, 0],  # Spin rate vector (side spin)
-        launch_angle_deg=10,  # Vertical launch angle
-        side_angle_deg=0,  # Horizontal angle
-        time_max=2.0,
-        dt=0.01
-    )
+   
+    if not game_stats:
+        time, x, y, z, vx, vy, vz = simulate_pitch(
+            V0=40,  # Initial velocity in m/s
+            omega_rpm=[0, 1200, 0],  # Spin rate vector (side spin)
+            launch_angle_deg=18,  # Vertical launch angle
+            side_angle_deg=0,  # Horizontal angle
+            time_max=2.0,
+            dt=0.01
+        )
+        pitch_type="Changeup"
+    else:
+        app.logger.info(f"stats: {game_stats}")
+        pitch_data = predict_pitch(game_stats[-1]["bat_velocity"], game_stats[-1]["exit_velocity"], game_stats[-1]["launch_angle"], pitch_type)
+        pitch_type = pitch_data["pitch_type"]
+        time, x, y, z, vx, vy, vz = simulate_pitch(
+            V0=pitch_data["pitch_velocity"],  # Initial velocity in m/s
+            omega_rpm=pitch_data["spin_vector"],  # Spin rate vector (side spin)
+            launch_angle_deg=pitch_data["launch_angle"],  # Vertical launch angle
+            side_angle_deg=pitch_data["side_angle"],  # Horizontal angle
+            time_max=2.0,
+            dt=0.01
+        )
+    app.logger.info(f"Pitch type: {pitch_type}")
     time_to_plate = time[-1]
     v_ball = [vx[-1], vy[-1], vz[-1]]
 
@@ -127,17 +146,6 @@ def generate_pitch():
         "vy": vy,
         "vz": vz})
 
-
-# def process_game():
-    # global latest_imu_data, delta_t
-    # while True:
-    #     if latest_imu_data:
-    #         # Perform the pitch calculation
-    #         # pitch = calculate_pitch(accelX, accelY, accelZ)
-    #         # app.logger.info(f"Calculated Pitch: {pitch} degrees")
-    #         # Here you can extend the code to do more physics calculations, such as velocity or acceleration
-            
-    #     time.sleep(delta_t)  # Delay before the next calculation cycle (adjust as needed)
 
 @app.route("/imu-data", methods=["GET"])
 def get_imu_data():
