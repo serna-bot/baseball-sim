@@ -107,11 +107,11 @@ def predict_pitch(bat_velocity_vector, exit_velocity_vector, launch_angle, pitch
     bat_velocity, exit_velocity = preprocess_vector_inputs(bat_velocity_vector, exit_velocity_vector)
 
     spin_vector = {
-        "Curveball": [0, np.random.uniform(-2530, -2430), 0],
-        "Fastball": [0, np.random.uniform(1933, 2055), 0],
-        "Knuckleball": [np.random.uniform(795, 989), 0, np.random.uniform(795, 989)],
-        "Slider": [np.random.uniform(2036, 2086) / np.sqrt(2), 0, np.random.uniform(-2086, -2036) / np.sqrt(2)],
-        "Changeup": [0, np.random.uniform(1167, 1629), 0]
+        "Curveball": [np.random.uniform(300, 500), np.random.uniform(-2530, -2430), np.random.uniform(300, 500)],
+        "Fastball": [np.random.uniform(300, 500), np.random.uniform(1933, 2055), np.random.uniform(300, 500)],
+        "Knuckleball": [np.random.uniform(795, 989), np.random.uniform(300, 500), np.random.uniform(795, 989)],
+        "Slider": [np.random.uniform(2036, 2086) / np.sqrt(2), np.random.uniform(300, 500), np.random.uniform(-2086, -2036) / np.sqrt(2)],
+        "Changeup": [np.random.uniform(300, 500), np.random.uniform(1167, 1629), np.random.uniform(300, 500)]
     }
 
     # Prepare input
@@ -128,5 +128,5 @@ def predict_pitch(bat_velocity_vector, exit_velocity_vector, launch_angle, pitch
         "pitch_velocity": round(float(pitch_velocity), 2),
         "spin_vector": spin_vector[pitch_type],
         "launch_angle": np.random.uniform(18, 22),
-        "side_angle": 0
+        "side_angle": 5
     }

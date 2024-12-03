@@ -4,51 +4,40 @@ from scipy.integrate import solve_ivp
 def magnus_force(velocity, omega, rho=1.225, radius=0.037):
     """
     Compute the Magnus force vector.
-    velocity: velocity vector [vx, vy, vz] in m/s
-    omega: spin vector [wx, wy, wz] in rad/s
-    rho: air density in kg/m^3
-    radius: radius of the baseball in m
     """
     velocity_norm = np.linalg.norm(velocity)
     if velocity_norm == 0:
         return np.array([0.0, 0.0, 0.0])  # Avoid division by zero
     
-    # Cross product to find Magnus force direction
+    # Cross product to determine lift direction
     lift_direction = np.cross(omega, velocity / velocity_norm)
     
-    # Magnitude of Magnus force
-    magnus_magnitude = 0.5 * rho * np.pi * radius**3 * velocity_norm * np.linalg.norm(omega)
+    # Lift coefficient approximation (dependent on spin ratio)
+    spin_ratio = radius * np.linalg.norm(omega) / velocity_norm
+    C_L = 1.0 / (2.0 + 1.0 / spin_ratio) if spin_ratio > 0 else 0.0  # Empirical approximation
     
-    # Resultant force vector
+    # Magnus force magnitude
+    area = np.pi * radius**2  # Cross-sectional area
+    magnus_magnitude = 0.5 * rho * C_L * area * velocity_norm**2
+    
     return magnus_magnitude * lift_direction
 
 def drag_force(velocity, rho=1.225, radius=0.037, Cd=0.47):
     """
     Compute the drag force vector.
-    velocity: velocity vector [vx, vy, vz] in m/s
-    rho: air density in kg/m^3
-    radius: radius of the baseball in m
-    Cd: drag coefficient
     """
     velocity_norm = np.linalg.norm(velocity)
     if velocity_norm == 0:
         return np.array([0.0, 0.0, 0.0])  # Avoid division by zero
     
-    area = np.pi * radius**2  # Cross-sectional area of the ball
+    area = np.pi * radius**2  # Cross-sectional area
     drag_magnitude = 0.5 * rho * Cd * area * velocity_norm**2
     
-    # Direction of drag is opposite to velocity
     return -drag_magnitude * (velocity / velocity_norm)
 
 def baseball_dynamics(t, state, mass, omega, rho, radius):
     """
     Compute the state derivatives for the baseball.
-    t: time in seconds
-    state: [x, y, z, vx, vy, vz]
-    mass: mass of the baseball in kg
-    omega: spin vector [wx, wy, wz] in rad/s
-    rho: air density in kg/m^3
-    radius: radius of the baseball in m
     """
     x, y, z, vx, vy, vz = state
     velocity = np.array([vx, vy, vz])
@@ -75,12 +64,6 @@ def baseball_dynamics(t, state, mass, omega, rho, radius):
 def simulate_pitch(V0, omega_rpm, launch_angle_deg, side_angle_deg, time_max=2.0, dt=0.01):
     """
     Simulate the baseball pitch in 3D.
-    V0: initial velocity in m/s
-    omega_rpm: spin rate vector [wx, wy, wz] in rpm
-    launch_angle_deg: vertical launch angle in degrees
-    side_angle_deg: horizontal angle in degrees
-    time_max: maximum simulation time in seconds
-    dt: time step in seconds
     """
     # Constants
     mass = 0.145  # Baseball mass in kg
@@ -96,7 +79,7 @@ def simulate_pitch(V0, omega_rpm, launch_angle_deg, side_angle_deg, time_max=2.0
     V0x = V0 * np.cos(launch_angle_rad) * np.cos(side_angle_rad)
     V0y = V0 * np.cos(launch_angle_rad) * np.sin(side_angle_rad)
     V0z = V0 * np.sin(launch_angle_rad)
-    state_0 = [0.0, 0.0, 1.0, V0x, V0y, V0z]  # Initial position and velocity
+    state_0 = [0.0, 0.0, 1.0, V0x, V0y, V0z]  # Initial position (z = 1 m) and velocity
     
     # Time vector
     t_span = (0, time_max)
@@ -118,20 +101,26 @@ def simulate_pitch(V0, omega_rpm, launch_angle_deg, side_angle_deg, time_max=2.0
     
     return time.tolist(), x.tolist(), y.tolist(), z.tolist(), vx.tolist(), vy.tolist(), vz.tolist()
 
-# Example usage
-# time, x, y, z, vx, vy, vz = simulate_pitch(
-#     V0=40,  # Initial velocity in m/s
-#     omega_rpm=[0, 2000, 0],  # Spin rate vector (side spin)
-#     launch_angle_deg=10,  # Vertical launch angle
-#     side_angle_deg=0,  # Horizontal angle
-#     time_max=2.0,
-#     dt=0.01
-# )
+def get_time_at_plate(time, y):
+    array = np.asarray(y)
+    idx = (np.abs(array - 18.4404)).argmin()
+    return time[idx], idx
 
-# Final velocity vector
-# final_velocity = [vx[-1], vy[-1], vz[-1]]
-# final_time = time[-1]
+# # Example usage
+time, x, y, z, vx, vy, vz = simulate_pitch(
+    V0=40,  # Initial velocity in m/s
+    omega_rpm=[0, 2000, 0],  # Spin rate vector (backspin for lift)
+    launch_angle_deg=5,  # Vertical launch angle
+    side_angle_deg=0,  # Horizontal angle
+    time_max=2.0,
+    dt=0.01
+)
+
+# # Final position and velocity
 # final_position = [x[-1], y[-1], z[-1]]
-# print(f"Final velocity: {final_velocity} m/s")
-# print(f"Time to plate: {final_time} seconds")
+# final_velocity = [vx[-1], vy[-1], vz[-1]]
 # print(f"Final position: {final_position}")
+# print(f"Final velocity: {final_velocity}")
+print(x)
+print(y)
+print(z)

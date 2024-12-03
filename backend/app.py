@@ -5,7 +5,7 @@ import asyncio
 import struct
 from threading import Thread
 from velocity import VelocityBattingEstimator
-from pitch import simulate_pitch
+from pitch import simulate_pitch, get_time_at_plate
 from hit import calculate_exit_velocity, calculate_launch_angle
 from pitch_model import predict_pitch
 
@@ -114,10 +114,10 @@ def generate_pitch():
     if not game_stats:
         time, x, y, z, vx, vy, vz = simulate_pitch(
             V0=40,  # Initial velocity in m/s
-            omega_rpm=[0, 1200, 0],  # Spin rate vector (side spin)
+            omega_rpm=[500, 2000, 500],  # Spin rate vector (side spin)
             launch_angle_deg=18,  # Vertical launch angle
-            side_angle_deg=0,  # Horizontal angle
-            time_max=2.0,
+            side_angle_deg=5,  # Horizontal angle
+            time_max=10.0,
             dt=0.01
         )
         pitch_type="Changeup"
@@ -130,12 +130,12 @@ def generate_pitch():
             omega_rpm=pitch_data["spin_vector"],  # Spin rate vector (side spin)
             launch_angle_deg=pitch_data["launch_angle"],  # Vertical launch angle
             side_angle_deg=pitch_data["side_angle"],  # Horizontal angle
-            time_max=2.0,
+            time_max=10.0,
             dt=0.01
         )
     app.logger.info(f"Pitch type: {pitch_type}")
-    time_to_plate = time[-1]
-    v_ball = [vx[-1], vy[-1], vz[-1]]
+    time_to_plate, index = get_time_at_plate(time, y)
+    v_ball = [vx[index], vy[index], vz[index]]
 
     return jsonify({
         "time": time,
@@ -144,7 +144,8 @@ def generate_pitch():
         "z": z,
         "vx": vx,
         "vy": vy,
-        "vz": vz})
+        "vz": vz,
+        "p" : y[index]})
 
 
 @app.route("/imu-data", methods=["GET"])

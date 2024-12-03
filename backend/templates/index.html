@@ -65,7 +65,7 @@
                 if (data === "Connected") {
                     resultsDiv.textContent = "Connected to the pitch stream...";
                 } else if (data.startsWith("Results:")) {
-                    resultsDiv.textContent = `Results: ${data.replace("Results: ", "")}`;
+                    resultsDiv.textContent = `${data.replace("Results: ", "")}`;
                     eventSource.close();
                     eventSource = null; // Reset the EventSource
                 }
