@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pitch Stream</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        #controls {
+            margin-top: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Pitch Streaming</h1>
+    <div id="controls">
+        <button id="fetch-start-button">Fetch and Start Pitch</button>
+    </div>
+    <div id="results"></div>
+
+    <script>
+        const fetchStartButton = document.getElementById('fetch-start-button');
+        const resultsDiv = document.getElementById('results');
+        let eventSource = null; // Track the EventSource instance
+
+        // Fetch the pitch data
+        async function fetchPitchData() {
+            try {
+                const response = await fetch('/get-pitch');
+                const data = await response.json();
+                console.log('Fetched pitch data:', data);
+                resultsDiv.textContent = "Fetched pitch data successfully.";
+            } catch (error) {
+                console.error('Error fetching pitch data:', error);
+                resultsDiv.textContent = "Failed to fetch pitch data.";
+            }
+        }
+
+        // Connect to the streaming endpoint
+        function connectToStream() {
+            if (eventSource) {
+                console.log('Stream already running.');
+                return; // Prevent multiple streams
+            }
+
+            eventSource = new EventSource('/start-pitch');
+
+            eventSource.onmessage = (event) => {
+                const data = event.data;
+                console.log('Stream data:', data);
+
+                if (data === "Connected") {
+                    resultsDiv.textContent = "Connected to the pitch stream...";
+                } else if (data.startsWith("Results:")) {
+                    resultsDiv.textContent = `Results: ${data.replace("Results: ", "")}`;
+                    eventSource.close();
+                    eventSource = null; // Reset the EventSource
+                }
+            };
+
+            eventSource.onerror = () => {
+                console.error('Error with the stream.');
+                resultsDiv.textContent = "Error connecting to the stream.";
+                eventSource.close();
+                eventSource = null;
+            };
+        }
+
+        // Fetch and Start Pitch Process
+        fetchStartButton.addEventListener('click', async () => {
+            resultsDiv.textContent = "Starting process...";
+            await fetchPitchData(); // Fetch pitch data
+            connectToStream(); // Start the stream
+        });
+    </script>
+</body>
+</html>

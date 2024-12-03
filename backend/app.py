@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, Response, stream_with_context
+from flask import Flask, jsonify, Response, stream_with_context, render_template
 from bleak import BleakScanner, BleakClient
 import logging
 import asyncio
@@ -67,7 +67,7 @@ async def connect_and_read():
             global time_to_plate, v_bat, v_ball, game_stats, initialize_flag
             if client.is_connected:
                 app.logger.info("Connected to Arduino")
-                yield f"Connected\n\n"
+                yield f"data: Connected\n\n"
                 start_time = asyncio.get_event_loop().time()
 
                 await asyncio.sleep(5)  # 2-second delay, adjust as needed
@@ -87,7 +87,7 @@ async def connect_and_read():
                         # app.logger.info(f"Current velocity: {v_bat}")
                         
                 await client.start_notify(CHAR_UUID, notification_handler)
-                yield f"Reading\n\n"
+                yield f"data: Reading\n\n"
 
                 # Keep the connection alive
                 while client.is_connected:
@@ -99,7 +99,7 @@ async def connect_and_read():
                             theta_launch = calculate_launch_angle(v_exit)
                             app.logger.info(f"vball: {v_ball} \nvbat: {v_bat} vexit: {v_exit} theta_launch: {theta_launch[1]}")
                             game_stats.append({"exit_velocity": v_exit, "launch_angle": theta_launch[1], "bat_velocity": v_bat})
-                            yield f"Results: {{'v_bat':{v_bat}, 'v_exit':{v_exit}, 'theta_launch':{theta_launch[1]}}}\n\n"
+                            yield f"data: {{'v_bat':{v_bat}, 'v_exit':{v_exit}, 'theta_launch':{theta_launch[1]}}}\n\n"
                             break
                     await asyncio.sleep(1)
 
@@ -152,7 +152,7 @@ def get_imu_data():
     return jsonify(latest_imu_data)
 
 
-@app.route("/start-pitch", methods=["POST"])
+@app.route("/start-pitch", methods=["GET"])
 def start_ble():
     global ble_task, initialize_flag, estimator
 
@@ -171,7 +171,16 @@ def start_ble():
 
     response = Response(ctx, content_type='text/event-stream')
     response.headers['Transfer-Encoding'] = 'chunked'
+    response.headers['Cache-Control'] = 'no-cache'
+    response.headers['Connection'] = 'keep-alive'
+    response.headers['Accept'] = '*/*'
+    
     return response
+
+@app.route('/')
+def index():
+    return render_template('/index.html')  
+
 
 if __name__ == "__main__":
     app.logger.info("Starting Flask server...")
